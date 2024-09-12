@@ -1,0 +1,12 @@
+{
+    "input":{
+        "input_rfl": "/scratch/carmon/lcluc_fire/remote/ls820220806_rfl.hdr",
+        "input_uncert": "path_to_uncert",
+        "input_obs": "/scratch/carmon/lcluc_fire/remote/ls820220806_obs.hdr"
+    },
+    "output":{
+        "output_folder": "/scratch/carmon/lcluc_fire/remote"
+    },
+    "prosail_database_file": "/scratch/carmon/prosail/ProSAIL/dataSpec_P5.csv"
+
+}
