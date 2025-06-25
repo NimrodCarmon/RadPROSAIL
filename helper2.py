@@ -26,6 +26,60 @@ from numpy import pi
 import pdb
 from numba import njit
 import numba as nb
+import pandas as pd
+
+from scipy.interpolate import interp1d
+
+def prepare_flux_interpolator(csvfile):
+    df = pd.read_csv(csvfile)
+    
+    wavelengths = df['wavelength_nm'].values
+    szas = sorted({int(col.split('_')[-1]) for col in df.columns if 'direct' in col})
+    
+    direct_fluxes = []
+    diffuse_fluxes = []
+    
+    for sza in szas:
+        direct_fluxes.append(df[f'direct_sza_{sza}'].values)
+        diffuse_fluxes.append(df[f'diffuse_sza_{sza}'].values)
+
+    direct_fluxes = np.array(direct_fluxes)  # shape: [num_sza, num_wl]
+    diffuse_fluxes = np.array(diffuse_fluxes)
+
+    interpolator_direct = interp1d(szas, direct_fluxes, axis=0, kind='linear', fill_value='extrapolate')
+    interpolator_diffuse = interp1d(szas, diffuse_fluxes, axis=0, kind='linear', fill_value='extrapolate')
+
+    return {
+        'wavelengths': wavelengths,
+        'direct_flux_interpolator': interpolator_direct,
+        'diffuse_flux_interpolator': interpolator_diffuse
+    }
+
+
+def dataSpec_MODTRAN_fluxes(csv_path='/store/carmon/PROSAIL_inversions/data/direct_diffuse.csv'):
+    """
+    Load MODTRAN-derived direct and diffuse spectral irradiance from CSV.
+    Returns a list structured as:
+        [wl, ..., Es, Ed]
+    where:
+        - wl: wavelength in nm (1D array)
+        - Es: direct flux (W/m²/μm)
+        - Ed: diffuse flux (W/m²/μm)
+    The other list elements (spectrum placeholders) are set to None for compatibility.
+    """
+    df = pd.read_csv(csv_path)
+    wl = df['wavelength_nm'].values
+    Es = df['E_direct_W_m2_um'].values
+    Ed = df['E_diffuse_W_m2_um'].values
+
+    spectra = [None] * 3  # assuming 11-element list to match structure
+    spectra[0] = wl
+    spectra[1] = Es
+    spectra[2] = Ed
+
+    headers = ['MODTRAN_fluxes']
+
+    return headers, spectra
 
 
 def calcLidf(LIDFa: float, LIDFb: float):
@@ -409,10 +463,10 @@ def PRO4SAIL(rho,tau,lidf,lai,q,tts,tto,psi,rsoil):
         tau (float): leaf transmmitance
         lidf (float): leaf distribution
         lai (float): leaf area index
-        q (float): not sure
+        q (float): not sure (hotspot)
         tts (flat): solar zenith
         tto (float): observation zenith
-        psi (float): I think it's a hot spot parameter
+        psi (float): relative azimuth angle
         rsoil (float): soil reflectance already mixed
     
     Returns:
@@ -632,8 +686,22 @@ def PRO4SAIL(rho,tau,lidf,lai,q,tts,tto,psi,rsoil):
         rsodt=rsod+((tss+tsd)*tdo+(tsd+tss*rsoil*rdd)*too)*rsoil/dn
         rsost=rsos+tsstoo*rsoil
         rsot=rsost+rsodt
-    
-    return rsot, rdot, rsdt, rddt
+        # directly transmitted at half canopy to map shadows
+        # ------------------------------------------------------------
+        # Spectrally-resolved direct-beam transmittance to mid-canopy
+        # ------------------------------------------------------------
+        #
+        # Standard PRO4SAIL uses T_half = exp(-ks * LAI / 2), which is
+        # spectrally flat. This correction introduces spectral attenuation
+        # by scaling with absorptance: a(λ) = 1 - ρ(λ) - τ(λ)
+        #
+        # Effective spectral extinction: k_eff(λ) = ks * a(λ)
+        # Then: T_half(λ) = exp(-k_eff(λ) * LAI / 2)
+        # We actually removed the reflectance part 
+
+        T_half = np.exp(-ks * lai * 0.5 * (1.0 - tau))  # shape: (n_bands,)
+        
+    return rsot, rdot, rsdt, rddt, T_half
 
 
 def _volscatt(tts,tto,psi,ttl):
@@ -840,10 +908,130 @@ def canref(rsot, rdot, rsdt, rddt, E_dir, E_dif, tts):
     resv = (rdot * dif_flux + rsot * dir_flux) / total_flux
     return resh, resv
 
+
+def compute_canopy_reflectance(
+    rsot, rdot, rsdt, rddt,
+    E_dir, E_dif, T_half,
+    model_shadow=True, shadow_fraction=0.99
+):
+    """
+    Compute hemispherical and directional canopy reflectance using PRO4SAIL outputs
+    and irradiance inputs, with optional shadowed foliage correction via mid-canopy
+    transmittance.
+
+    Parameters:
+        rsot : float or array
+            Bidirectional reflectance factor (sun–observer geometry) [unitless]
+        rdot : float or array
+            Hemispherical-directional reflectance (viewing-direction weighted) [unitless]
+        rsdt : float or array
+            Directional-hemispherical reflectance (illumination-direction weighted) [unitless]
+        rddt : float or array
+            Bi-hemispherical reflectance (fully diffuse illumination) [unitless]
+        E_dir : float or array
+            Direct spectral irradiance [W/m²/μm]
+        E_dif : float or array
+            Diffuse spectral irradiance [W/m²/μm]
+        T_half : float or array
+            Direct-beam transmittance to mid-canopy depth [unitless]
+        model_shadow : bool, optional
+            Whether to include shaded foliage effects using `T_half` (default: True)
+        shadow_fraction : float, optional
+            Fraction of foliage considered self-shaded (0–1) (default: 0.99)
+
+    Returns:
+        resh : float or array
+            Hemispherical reflectance (illumination-weighted) [unitless]
+        resv : float or array
+            Directional reflectance (view-weighted) [unitless]
+    """
+
+
+    # Total downwelling irradiance (direct + diffuse)
+    total_irradiance = E_dir + E_dif
+
+    # If shadow modeling is off, use raw PRO4SAIL outputs weighted by irradiance
+    if not model_shadow:
+        resh = (rddt * E_dif + rsdt * E_dir) / total_irradiance
+        resv = (rdot * E_dif + rsot * E_dir) / total_irradiance
+        return resh, resv
+
+    # Partition canopy into sunlit and self-shaded fractions
+    f_shade = shadow_fraction               # fraction of foliage that is shaded
+    f_sunlit = 1.0 - f_shade                # fraction of foliage that is directly illuminated
+
+    # Approximate shaded foliage illumination:
+    # Receives diffuse light + scattered direct light attenuated to mid-canopy
+    flux_shaded = E_dif + T_half * E_dir
+    
+    import matplotlib.pyplot as plt
+    plt.plot(T_half)
+    plt.savefig('t_half.jpg')
+    
+
+    # Sunlit foliage receives full direct and diffuse flux
+    flux_sunlit = E_dif + E_dir
+
+    # Hemispherical reflectance:
+    # Combine sunlit and shaded contributions under respective illumination
+    resh = (
+        f_sunlit * (rddt * E_dif + rsdt * E_dir) +    # sunlit contribution
+        f_shade  * (rddt * flux_shaded)               # shaded contribution
+    ) / total_irradiance
+
+    # Directional reflectance:
+    # View-weighted reflectance accounting for shadow modulation
+    resv = (
+        f_sunlit * (rdot * E_dif + rsot * E_dir) +    # sunlit contribution
+        f_shade  * (rdot * flux_shaded)               # shaded contribution
+    ) / total_irradiance
+
+    return resh, resv
+
+
+def canopy_reflectance_lut(rsot, rdot, rsdt, rddt, E_dir, E_dif):
+    total_flux = E_dir + E_dif
+    
+    resh = (rddt * E_dif + rsdt * E_dir) / total_flux  # Hemispherical reflectance
+    resv = (rdot * E_dif + rsot * E_dir) / total_flux  # Directional reflectance
+    
+    return resh, resv
+
+
+
+
+def canref2_basic(rsot, rdot, rsdt, rddt, E_dir, E_dif, tts):
+    """
+    Compute hemispherical and directional reflectance from canopy,
+    using precomputed direct and diffuse fluxes (e.g., MODTRAN-derived).
+    
+    Parameters:
+        rsot : bidirectional reflectance factor (sun & view direction)
+        rdot : hemispherical-directional reflectance (viewing direction)
+        rsdt : directional-hemispherical reflectance (illumination direction)
+        rddt : bi-hemispherical reflectance (diffuse illumination)
+        E_dir : direct spectral irradiance [W/m²/μm]
+        E_dif : diffuse spectral irradiance [W/m²/μm]
+        tts : solar zenith angle [degrees] — accepted for compatibility, unused here
+
+    Returns:
+        resh : hemispherical reflectance (illumination-weighted)
+        resv : directional reflectance (view-weighted)
+    """
+    dir_flux = E_dir
+    dif_flux = E_dif
+    total_flux = dir_flux + dif_flux
+
+    resh = (rddt * dif_flux + rsdt * dir_flux) / total_flux
+    resv = (rdot * dif_flux + rsot * dir_flux) / total_flux
+
+    return resh, resv
+
+
 def dataSpec_P5B(): # I've reorganized the data so it's separated by row in a CSV file - much easier for handling in Python.
     try:
-       
-        infile=open('/scratch/carmon/prosail/ProSAIL'+'/dataSpec_P5_resampled.csv', 'r')
+        #import pdb; pdb.set_trace()
+        infile=open('/store/carmon/PROSAIL_inversions/RadPROSAIL/dataSpec_P5.csv')#, 'r')
         #infile=open(os.path.abspath(os.curdir)+'/dataSpec_P5_resampled.csv', 'r')
     except:
         print('Cannot open dataSpec_P5.csv, exiting.')

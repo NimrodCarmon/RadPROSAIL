@@ -29,7 +29,7 @@ from prosail2 import Prosail
 import pdb
 import matplotlib.pyplot as plt
 import numpy as np
-from BRDF import est_spec
+#from BRDF import est_spec
 import cProfile
 import matplotlib.colors as mcolors
 
@@ -220,8 +220,8 @@ def main():
     #plt.plot(wvs, results); plt.show()
     pdb.set_trace()
     try_rho = results[:, 0]
-    brdf_adj = est_spec(try_rho, 2, 30, 5, 30, 50, 10)
-    plt.plot(wvs, try_rho, wvs, brdf_adj); plt.show()
+    #brdf_adj = est_spec(try_rho, 2, 30, 5, 30, 50, 10)
+    plt.plot(wvs, try_rho); plt.savefig('test.jpg')
     #results = p.run(cnf)
     print(results)
 
