@@ -56,7 +56,11 @@ def prepare_flux_interpolator(csvfile):
     }
 
 
-def dataSpec_MODTRAN_fluxes(csv_path='/store/carmon/PROSAIL_inversions/data/direct_diffuse.csv'):
+#def dataSpec_MODTRAN_fluxes(csv_path='/store/carmon/PROSAIL_inversions/data/direct_diffuse.csv'):
+def dataSpec_MODTRAN_fluxes(csv_path=None):
+    if csv_path is None:
+        csv_path = os.path.join(os.path.dirname(__file__), 'data', 'direct_diffuse.csv')
+
     """
     Load MODTRAN-derived direct and diffuse spectral irradiance from CSV.
     Returns a list structured as:
@@ -1031,7 +1035,10 @@ def canref2_basic(rsot, rdot, rsdt, rddt, E_dir, E_dif, tts):
 def dataSpec_P5B(): # I've reorganized the data so it's separated by row in a CSV file - much easier for handling in Python.
     try:
         #import pdb; pdb.set_trace()
-        infile=open('/store/carmon/PROSAIL_inversions/RadPROSAIL/dataSpec_P5.csv')#, 'r')
+        infile_path = os.path.join(os.path.dirname(__file__), 'data', 'dataSpec_P5.csv')
+        infile = open(infile_path)
+
+        #infile=open('/store/carmon/PROSAIL_inversions/RadPROSAIL/dataSpec_P5.csv')#, 'r')
         #infile=open(os.path.abspath(os.curdir)+'/dataSpec_P5_resampled.csv', 'r')
     except:
         print('Cannot open dataSpec_P5.csv, exiting.')

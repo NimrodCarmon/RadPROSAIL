@@ -63,7 +63,8 @@ plt.xlim(400, 2500)
 # Colorbar indicating SZA
 sm = plt.cm.ScalarMappable(cmap='viridis', norm=plt.Normalize(vmin=sza_list.min(), vmax=sza_list.max()))
 sm.set_array([])
-cbar = plt.colorbar(sm)
+cbar = plt.colorbar(sm, ax=plt.gca())
+
 cbar.set_label('Solar Zenith Angle (degrees)')
 
 plt.tight_layout()
