@@ -992,8 +992,36 @@ def compute_canopy_reflectance(
 
     return resh, resv
 
+def canopy_reflectance_lut(rsot, rdot, rsdt, rddt, E_dir, E_dif, tts, etts=None):
+    """
+    Canopy reflectance computation with optional flux scaling for terrain tilt.
 
-def canopy_reflectance_lut(rsot, rdot, rsdt, rddt, E_dir, E_dif):
+    Parameters:
+        rsot, rdot, rsdt, rddt: PROSAIL outputs
+        E_dir, E_dif: direct and diffuse irradiance at TOA
+        tts: TOA solar zenith angle (deg)
+        etts: effective local solar zenith angle (deg), optional
+
+    Returns:
+        resh, resv: hemispherical and directional reflectance (unitless)
+    """
+    # Unscaled total irradiance, matching EMIT assumptions
+    total_flux = E_dir + E_dif
+
+    # Scale direct flux in numerator only if etts is provided
+    if etts is not None:
+        cos_toa = np.cos(np.radians(tts))
+        cos_eff = np.cos(np.radians(etts))
+        E_dir_scaled = E_dir * (cos_eff / cos_toa)
+    else:
+        E_dir_scaled = E_dir
+
+    resh = (rddt * E_dif + rsdt * E_dir_scaled) / total_flux
+    resv = (rdot * E_dif + rsot * E_dir_scaled) / total_flux
+
+    return resh, resv
+
+def canopy_reflectance_lut_old(rsot, rdot, rsdt, rddt, E_dir, E_dif):
     total_flux = E_dir + E_dif
     
     resh = (rddt * E_dif + rsdt * E_dir) / total_flux  # Hemispherical reflectance

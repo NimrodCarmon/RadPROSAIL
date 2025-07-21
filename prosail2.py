@@ -123,12 +123,6 @@ class Prosail():
             # run the canopy model
             rsot, rdot, rsdt, rddt, T_half= PRO4SAIL(rho, tau, lidf, LAI, hspot, tts, tto, psi, rsoil0)
 
-            import matplotlib.pyplot as plt
-            import numpy as np
-            import os
-
-            # Ensure output directory exists
-            os.makedirs('figures', exist_ok=True)
 
             # --- Compute reflectances ---
             
@@ -137,9 +131,18 @@ class Prosail():
             if self.use_lut_canopy_model:
                 E_dir = self.flux_lut['direct_flux_interpolator'](tts)
                 E_dif = self.flux_lut['diffuse_flux_interpolator'](tts)
-                resh, resv = canopy_reflectance_lut(rsot, rdot, rsdt, rddt, E_dir, E_dif)
+
+                # Use slope-corrected etts if available
+                if 'etts' in conf:
+                    resh, resv = canopy_reflectance_lut(rsot, rdot, rsdt, rddt,
+                                                        E_dir, E_dif, tts=tts, etts=conf['etts'])
+                else:
+                    resh, resv = canopy_reflectance_lut(rsot, rdot, rsdt, rddt,
+                                                        E_dir, E_dif, tts=tts)
+
             else:
                 resh, resv = canref(rsot, rdot, rsdt, rddt, self.Es, self.Ed, tts)
+
 
 
 
