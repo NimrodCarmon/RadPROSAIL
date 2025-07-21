@@ -1,0 +1,61 @@
+{
+	"lut_grid":{
+			"options": ["H2OSTR", "AOT550", "GNDALT", "SZA", "ASTMX"],
+			"H2OSTR": {
+				"min": 0.5,
+				"max": 3.1,
+				"spacing": 0.5
+				},
+			"AOT550": {
+				"min": 0.0001,
+				"max": 0.61,
+				"spacing": 0.15
+				},
+			"GNDALT": {
+				"min": -0.4,
+				"max": 1.8,
+				"spacing": 0.7
+				},
+			"SZA": {
+				"min": 52.4,
+				"max": 53.7,
+				"spacing": 0.5
+				}
+
+	},
+	"MISC": {
+		"H1": 100
+	},
+
+	"output":{
+        "output_dir": "/scratch/carmon/modtran_luts/projects/temp",
+        "write_hdf5": true,
+		"hdf5_filename": "temp2"
+    },
+
+	"wavelength_spacing":{
+		"from_file": false,
+		"DV": 1.0,
+		"FWHM": 1.0,
+		"min": 380,
+		"max": 2510,
+		"comment": "a regular wavelength grid with 1 nm spacing for now"
+	},
+	
+	"implementation":{
+		"debug": true,
+		"setup_and_quit": false,
+		"read_and_save": true,
+		"write_hdf5": true,
+		"band_model": "01_2013",
+		"options_for_band_model": ["p1_2013", "01_2013", "05_2013"],
+		"multipart": true
+	},
+	
+	"input": {
+        "loc_file": "/scratch/carmon/isofit/examples/20230323_luts/remote/ang20200712t201415_rdn_v2y1_loc_ort",
+        "measured_radiance_file": "/scratch/carmon/isofit/examples/20230323_luts/remote/ang20200712t201415_rdn_v2y1_img",
+        "obs_file": "/scratch/carmon/isofit/examples/20230323_luts/remote/ang20200712t201415_rdn_v2y1_obs_ort"
+    }
+}
+
